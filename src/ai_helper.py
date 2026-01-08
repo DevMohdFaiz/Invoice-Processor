@@ -1,16 +1,18 @@
 import os
+import time
 from pydantic import BaseModel, Field
 from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 from typing import List, Optional
+from config import GROQ_API_KEY
 
 
 class AIParser():
     """Use an LLM to extract details from OCR text"""
 
     def __init__(self):
-        self.llm = ChatGroq(api_key=os.environ["GROQ_API_KEY"], model="openai/gpt-oss-120b", temperature=0)
+        self.llm = ChatGroq(api_key=GROQ_API_KEY, model="openai/gpt-oss-120b", temperature=0)
 
 
     def parse_receipt_with_llm(self, raw_text):
@@ -87,7 +89,17 @@ class AIParser():
 
         return llm_response
     
-    def parse_llm_response_into_a_single_list(self, full_llm_text):
+    def extract_all_details_via_llm(self, all_ocr_text, end_range=51, BATCH_SIZE=10):
+        """Pass all OCR data into structured data through an LLM"""
+        llm_data = []
+        for i in range(0, end_range, BATCH_SIZE):
+            receipts = all_ocr_text[i: i+BATCH_SIZE]
+            llm_response = self.parse_receipt_with_llm(receipts)
+            llm_data.append(llm_response)
+            time.sleep(20)
+        return llm_data
+    
+    def pass_llm_response_into_a_single_list(self, full_llm_text):
         """Pass the chunked llm response into a single list"""
         all_receipts = []
         for text in full_llm_text:
