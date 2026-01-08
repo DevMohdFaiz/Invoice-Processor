@@ -86,10 +86,10 @@ class LLMChains():
     def sql_chain(self, query:str, top_k:int =5):
         """Chain to write SQL queries to answer user questions"""
         sql_tools = self.sql_toolkit.get_tools()
-        print(f"sql dialect: {self.sql_db.dialect}")
-        print(f"Available tables: {self.sql_db.get_usable_table_names()}")
-        for tool in sql_tools:
-            print(f"{tool.name}: {tool.description}\n")
+        # print(f"sql dialect: {self.sql_db.dialect}")
+        # print(f"Available tables: {self.sql_db.get_usable_table_names()}")
+        # for tool in sql_tools:
+        #     print(f"{tool.name}: {tool.description}\n")
 
         system_prompt = (f"""
         You are an agent designed to interact with a SQL database.
@@ -120,11 +120,48 @@ class LLMChains():
         agent = create_agent(model=self.llm, tools=sql_tools, system_prompt=system_prompt)
         # chain = system_prompt | agent
         # return chain.invoke({"sql_db_dialect": self.sql_db_dialect, "top_k": top_k, "query": query})
-        return agent.invoke({"messages": [{"role": "user", "content": query}]})
+        return agent.invoke({
+            "messages": [{"role": "user", "content": query}]
+        })
     
-        # response = agent.invoke({"messages": [{
-        #     "role": "user", "content": query
-        # }]})
-        return response
-    
-    
+        
+    def ai_chat(self, query):
+        """Chat with a RAG Model to answer questions about your receipts"""
+
+        classifier_prompt = ChatPromptTemplate.from_template("""
+        Given the user question below, classify it as either being about
+        `database` (for structured data like totals, counts, averages, dates) OR
+        `vector` (for unstructured text, descriptions, specific line items, policies).
+
+        Do not answer the question. Just return 'database' or 'vector'.
+        Question:
+        {question}
+
+        Classification:
+        """)
+
+        classifier_llm = ChatGroq(api_key=os.environ["GROQ_API_KEY"], model="llama-3.1-8b-instant", temperature=0)
+        classifier_chain = classifier_prompt | classifier_llm | StrOutputParser()
+
+        def route_decision(info):
+            category = info["category"].strip().lower()
+            question = info["question"]
+
+            if "database" in category:
+                return self.sql_chain(query=question)
+            else:
+                return self.vector_chain(query=question)
+
+        full_chain = (
+                        {"category": classifier_chain, "question": lambda x: x["question"]} 
+                        | RunnableLambda(route_decision)
+                    )
+        response = full_chain.invoke({"question": query})
+        try:
+            response_text = response['messages'][-1].content
+        except:
+            response_text = response.content
+        # response_text = response['messages'][-1].content
+        # return response_text, response
+        return response, response_text
+
