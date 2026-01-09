@@ -10,15 +10,23 @@ from langchain_huggingface import HuggingFaceEmbeddings
 
 
 class ReceiptDB():
-    """Setup the full sql database for the receipts"""
+    """Setup the full sql and vector databases for the receipts"""
 
-    def __init__(self):
-        with open("assets/full_receipt_details.pkl", "rb") as f:
+    def __init__(
+            self,
+            sql_db_path,
+            sql_db,
+            vector_db_path,
+            vector_db_name,
+            full_receipt_details = "assets/full_receipt_details.pkl"
+            ):
+        
+        with open(full_receipt_details, "rb") as f:
             self.full_receipt_details = pickle.load(f)
-        self.sql_db_path = "db/receipts_sql_db"
-        self.sql_db = "db/receipts_sql_db/receipts.db"
-        self.vector_db_path = "db/receipts_vector_db"
-        self.vector_db_name= "receipts"
+        self.sql_db_path = sql_db_path  #"db/receipts_sql_db"
+        self.sql_db = sql_db    #"db/receipts_sql_db/receipts.db"
+        self.vector_db_path = vector_db_path    #"db/receipts_vector_db"
+        self.vector_db_name= vector_db_name     #"receipts"
         self.embeddings = HuggingFaceEmbeddings(
             model_name= "C:\\Users\HomePC\Desktop\Python\deep_learning_ai\langchain_intro\models\\all-MiniLM-L6-v2",
             encode_kwargs = {"normalize_embeddings": True}
@@ -71,7 +79,6 @@ class ReceiptDB():
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_date ON receipts(date)")
 
             conn.commit()
-        conn.close()
         print(f"Sql database successfully created at {db_path}")
 
 
@@ -104,7 +111,7 @@ class ReceiptDB():
 
                 receipt_id = cursor.lastrowid
 
-                items = receipt.get("items", {})
+                items = receipt.get("items", [])
                 for item in items:
                         cursor.execute("""
                             INSERT INTO line_items(
@@ -121,11 +128,10 @@ class ReceiptDB():
                             )          
                         )
 
-                        self.create_vector_db(receipt=receipt, receipt_id=receipt_id)
+                self.create_vector_db(receipt=receipt, receipt_id=receipt_id)
 
                 conn.commit()
         print(f"Vector database successfully created at {self.vector_db_path}")
-        conn.close()
 
     
     def create_vector_db(self,  receipt, receipt_id, vector_db_path=None,):
@@ -149,7 +155,7 @@ class ReceiptDB():
                 "receipt_id": receipt_id,
                 "date": receipt.get("date"),
                 "vendor": receipt.get("vendor_name", "Unknown"),
-                "total": receipt.get("total_price", 0)
+                "total": receipt.get("total", 0)
             }
         )
         self.vectorstore.add_documents([doc])
@@ -175,26 +181,15 @@ class ReceiptDB():
             cursor.execute("DROP TABLE IF EXISTS receipts")
             cursor.execute("DROP TABLE IF EXISTS line_items")
         conn.commit()
-        conn.close()
     
     def delete_vector_db(self, vector_db_path=None):
         """Delete the vector database"""
         if vector_db_path is None:
             vector_db_path= self.vector_db_path
-
-        if hasattr(self, 'vectorstore'):
-            del self.vectorstore
         
         if os.path.exists(vector_db_path):
             shutil.rmtree(vector_db_path)
             print(f"Vector database at {vector_db_path} successfully deleted")
-            
-            # Reinitialize empty vectorstore after deletion
-            # self.vectorstore = Chroma(
-            #     embedding_function=self.embeddings,
-            #     persist_directory=self.vector_db_path,
-            #     collection_name=self.vector_db_name
-            # )
         else:
             print(f"Vector database at {vector_db_path} does not exist")
 
@@ -217,4 +212,31 @@ class ReceiptDB():
         #     }
         # )
         # self.vectorstore.add_documents([doc])
-        
+    
+    def retrieve_docs_from_db(self, query, num_matches=5):
+        retriever = self.vectorstore.as_retriever(search_kwargs={"k": num_matches*10})
+        response = retriever.invoke(query)
+        seen_ids = set()
+        unique_res = []
+
+        for doc in response:
+            receipt_id= doc.metadata['receipt_id']
+            if receipt_id not in seen_ids:
+                seen_ids.add(receipt_id)
+                unique_res.append(doc)
+            if len(unique_res)>=num_matches:
+                break
+
+        unique_ids = [r.metadata['receipt_id'] for r in unique_res]
+
+        with sqlite3.connect(self.sql_db) as conn:
+            cursor = conn.cursor()
+            matched_receipts, matched_items =[], []
+            for receipt_id in unique_ids:
+                cursor.execute("SELECT * FROM receipts where id = ?", (receipt_id,))
+                receipt = cursor.fetchone()
+                matched_receipts.append(receipt)
+                cursor.execute("SELECT * FROM line_items where receipt_id = ?", (receipt_id,))
+                item = cursor.fetchone()
+                matched_items.append(item)
+        return matched_receipts, matched_items
