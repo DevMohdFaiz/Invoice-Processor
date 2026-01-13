@@ -19,7 +19,7 @@ class GroqProcessor():
             self,
             model = "meta-llama/llama-4-scout-17b-16e-instruct"
             ):        
-        self.llm = ChatGroq(api_key=GROQ_API_KEY, model=self.model, temperature=0)
+        self.llm = ChatGroq(api_key=GROQ_API_KEY, model=model, temperature=0)
 
     def optimize_image_for_lvm(self, original_image_path, optimized_image_path, max_img_size=1024):
             """Optimize user image before sending to lvm"""
@@ -63,8 +63,10 @@ class GroqProcessor():
             image_path:str = system path of the user image
         """
         base64_image = self.encode_image_tobase64(image_path)
+
         class LineItem(BaseModel):
             """A single item on the receipt"""
+            
             description: str = Field(description="The name of the items/ decription")
             quantity: Optional[int] = Field(default=1, description="Quantity Purchased")
             unit_price: float = Field(default=None, description="Price of a single unit of this line item")
@@ -72,7 +74,7 @@ class GroqProcessor():
 
         class Receipt(BaseModel):
             """Structured Receipt Data"""
-            
+
             vendor_name: str = Field(description="Name of the Store or vendor")
             date: Optional[str] = Field(description="Date of the purchase in DD-MM-YYY format")
             total: float = Field(description="Total amount of the purchase")
@@ -135,4 +137,5 @@ class GroqProcessor():
             }
     
     # def batch_extract_receipt(image_paths):
+
 
