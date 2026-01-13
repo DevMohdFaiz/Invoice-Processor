@@ -59,13 +59,13 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Initialize session state
+
 if 'messages' not in st.session_state:
     st.session_state.messages = {'user_messages': [], 'ai_messages': []}
 if 'receipts_processed' not in st.session_state:
     st.session_state.receipts_processed = 0
 
-# Sidebar
+
 with st.sidebar:
     st.markdown("### Navigation")
     page = st.radio(
@@ -81,24 +81,33 @@ tab1, tab2 = st.tabs(["AI", "Other"])
 with tab1:
     st.subheader("AI Chat")
 
-    st.text(st.session_state.messages)
-    for idx, message in enumerate(st.session_state.messages['user_messages']):
-        with st.chat_message('human'):
+    # Display all previous messages
+    for idx in range(len(st.session_state.messages['user_messages'])):
+        with st.chat_message('user'):
             st.write(st.session_state.messages['user_messages'][idx])
-        with st.chat_message('ai'):
+        with st.chat_message('assistant'):
             st.write(st.session_state.messages['ai_messages'][idx])
-
-        # with st.chat_message('ai'):
-        # pass
     
-    user_message =  st.chat_input()
+ 
+    user_message = st.chat_input("Ask me anything about your receipts...")
     if user_message:
-        ai_response = rag_ai_chat.ai_chat(user_message)
-        if ai_response:
-            st.session_state.messages['user_messages'].append(user_message)
-            st.session_state.messages['ai_messages'].append(ai_response[1])
-        else:
-            st.warning("Error getting AI response...")
-        st.text(st.session_state.messages)
+        with st.chat_message('user'):
+            st.write(user_message)
+
+        with st.chat_message('assistant'):
+            with st.spinner("Thinking..."):
+                ai_response = rag_ai_chat.ai_chat(user_message)
+                if ai_response:
+                    st.write(ai_response[1])
+                    # Save to session state
+                    st.session_state.messages['user_messages'].append(user_message)
+                    st.session_state.messages['ai_messages'].append(ai_response[1])
+                else:
+                    error_msg = "Sorry, I encountered an error. Please try again."
+                    st.write(error_msg)
+                    st.session_state.messages['user_messages'].append(user_message)
+                    st.session_state.messages['ai_messages'].append(error_msg)
+        
+        st.rerun()
 
 
