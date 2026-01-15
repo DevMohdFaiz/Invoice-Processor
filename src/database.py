@@ -3,6 +3,7 @@ import pickle
 import os
 import json
 import shutil
+import hashlib
 from tqdm import tqdm
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
@@ -230,4 +231,65 @@ class ReceiptDB():
 
 class UserDB():
     """Perform operations on the `users` database"""
-    
+
+    def __init__(
+        self
+    ):
+        self.users_db = "db/receipts_sql_db/users.db"
+
+    def hash_password(self, password:str):
+        """hash the password before storing in db"""
+        return hashlib.sha256(password.encode()).hexdigest()
+
+
+    def create_users_db(self, users_db:str = None):
+        """Create the users sql database"""
+        if users_db is None:
+            users_db= self.users_db
+
+        with sqlite3.connect(users_db) as conn:
+            cursor= conn.cursor()
+            cursor.execute("""SELECT count(name) FROM sqlite_master WHERE type='table' AND name= 'users' """)
+            users_table = cursor.fetchone()[0]
+
+        if users_table >=1:
+            return users_db
+        else:
+            with sqlite3.connect(users_db) as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                CREATE TABLE IF NOT EXISTS users(
+                    id INTEGER PRIMARY KEY,
+                    username TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP               
+                )
+            """)
+            conn.commit()
+            print(f"{users_db} successfully created!")
+        return users_db
+
+
+    def add_new_user(self, username:str, password:str):
+        """Add a new user to the `users` table in the sql database"""
+        users_db = self.create_users_db()
+        with sqlite3.connect(users_db) as conn:
+            cursor = conn.cursor()
+            all_users = cursor.execute("SELECT username FROM users").fetchall()
+            
+        for user in all_users: 
+            if user[0].lower() == username.lower(): #checks if username is already taken
+                print(f"{username} is already taken! Pls try another username.")
+                return
+
+        with sqlite3.connect(users_db) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+            INSERT INTO users(username, password_hash)
+            VALUES (?, ?)
+            """,
+            (username, self.hash_password(password)) 
+        )
+        conn.commit()
+        print(f"{username} successfully added to the database")
+
