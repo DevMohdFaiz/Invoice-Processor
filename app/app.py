@@ -99,7 +99,8 @@ with tab1:
                 ai_response = rag_ai_chat.ai_chat(user_message)
                 if ai_response:
                     st.write(ai_response[1])
-                    # Save to session state
+
+                    # Save messages to session state
                     st.session_state.messages['user_messages'].append(user_message)
                     st.session_state.messages['ai_messages'].append(ai_response[1])
                 else:
